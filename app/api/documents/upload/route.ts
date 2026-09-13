@@ -48,15 +48,9 @@ export async function POST(request: NextRequest) {
     const bytes = Buffer.from(await file.arrayBuffer())
     let text = ''
   if (file.type === 'application/pdf') {
-    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
-    const loaded = await pdfjs.getDocument({ data: new Uint8Array(bytes), disableWorker: true }).promise
-    const pages: string[] = []
-    for (let pageNumber = 1; pageNumber <= loaded.numPages; pageNumber += 1) {
-      const page = await loaded.getPage(pageNumber)
-      const content = await page.getTextContent()
-      pages.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' '))
-    }
-    text = pages.join('\n\n')
+    const { extractText } = await import('unpdf')
+    const extracted = await extractText(new Uint8Array(bytes), { mergePages: true })
+    text = extracted.text
   } else if (file.type.startsWith('text/') || file.type === 'application/json') {
     text = bytes.toString('utf8')
   } else {
