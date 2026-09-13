@@ -2,7 +2,6 @@ export const runtime = 'nodejs'
 
 import { randomUUID, createHash } from 'node:crypto'
 import { headers } from 'next/headers'
-import { generateText, gateway } from 'ai'
 import { auth } from '@/lib/auth'
 import { and, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
@@ -27,9 +26,14 @@ export async function POST(request: Request) {
     send(controller, { type: 'run_queued', run_id: runId }); send(controller, { type: 'stage', stage: 'Hybrid Retrieval', status: 'completed', detail: `Matched ${evidence.length} passage${evidence.length === 1 ? '' : 's'} from uploaded policies.` })
     if (!evidence.length) { send(controller, { type: 'run_result', run_id: runId, answer: 'The uploaded policies do not establish an answer to this question.', confidence: 0, requires_review: true, evidence_state: { status: 'insufficient', decision: 'abstain', coverage: 0, consistency: 1, citation_completeness: 0, rationale: 'No uploaded policy passage matched the question.', receipts: [] }, agents: [], provider: { mode: 'native-nextjs' } }); send(controller, '[DONE]'); controller.close(); return }
     const context = evidence.map(({ chunk, document }, index) => `[${index + 1}] ${document.title} | section ${chunk.chunkIndex + 1}\n${chunk.content}`).join('\n\n')
-    const result = await generateText({ model: gateway('openai/gpt-4.1-mini'), system: 'You answer questions using only the supplied policy passages. Be direct, explain the rule, mention exceptions, and cite claims with [number]. If the passages do not support a claim, say so.', prompt: `Question: ${query}\\n\\nPolicy passages:\\n${context}` })
+    if (!process.env.GROQ_API_KEY) throw new Error('GROQ_API_KEY is not configured.')
+    const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'llama-3.3-70b-versatile', temperature: 0.1, max_tokens: 900, messages: [{ role: 'system', content: 'You are DocuTrust policy assistant. Answer only from the supplied policy passages. Be direct, explain the rule and exceptions, and cite claims with [1], [2]. If evidence is insufficient, say so clearly.' }, { role: 'user', content: `Question: ${query}\\n\\nPolicy passages:\\n${context}` }] }) })
+    if (!groqResponse.ok) throw new Error(`Groq request failed (${groqResponse.status}).`)
+    const groqPayload = await groqResponse.json() as { choices?: { message?: { content?: string } }[] }
+    const answer = groqPayload.choices?.[0]?.message?.content?.trim()
+    if (!answer) throw new Error('Groq returned an empty answer.')
     const receipts = evidence.map(({ chunk, document, score }, index) => ({ document_id: document.id, document: document.title, version: chunk.versionLabel, section: `Chunk ${chunk.chunkIndex + 1}`, quote: chunk.content.slice(0, 320), score: Math.min(0.99, 0.55 + score * 0.4), page: null }))
-    send(controller, { type: 'stage', stage: 'Verification', status: 'completed', detail: 'Checked the generated answer against uploaded evidence.' }); send(controller, { type: 'run_result', run_id: runId, answer: result.text, confidence: Math.min(0.98, 0.62 + evidence[0].score * 0.35), requires_review: evidence[0].score < 0.2, evidence_state: { status: 'grounded', decision: 'answer', coverage: Math.min(1, evidence[0].score + 0.5), consistency: 1, citation_completeness: 1, rationale: 'Answer generated from uploaded policy chunks.', receipts }, agents: [{ agent: 'report', status: 'completed', answer: result.text, model: 'openai/gpt-4.1-mini', latency_ms: 0 }], provider: { mode: 'native-nextjs', model: 'openai/gpt-4.1-mini' } }); send(controller, '[DONE]'); controller.close()
+    send(controller, { type: 'stage', stage: 'Verification', status: 'completed', detail: 'Checked the generated answer against uploaded evidence.' }); send(controller, { type: 'run_result', run_id: runId, answer, confidence: Math.min(0.98, 0.62 + evidence[0].score * 0.35), requires_review: evidence[0].score < 0.2, evidence_state: { status: 'grounded', decision: 'answer', coverage: Math.min(1, evidence[0].score + 0.5), consistency: 1, citation_completeness: 1, rationale: 'Answer generated from uploaded policy chunks.', receipts }, agents: [{ agent: 'report', status: 'completed', answer, model: 'llama-3.3-70b-versatile', latency_ms: 0 }], provider: { mode: 'groq', model: 'llama-3.3-70b-versatile' } }); send(controller, '[DONE]'); controller.close()
   } catch (error) {
     const fallback = evidence[0]?.chunk.content ?? 'The uploaded policy contains relevant evidence, but the answer generator is unavailable.'
     send(controller, { type: 'stage', stage: 'Fallback', status: 'completed', detail: 'Returned the matched policy passage because the answer provider was unavailable.' })
