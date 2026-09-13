@@ -61,9 +61,9 @@ export async function POST(request: NextRequest) {
   const chunks = normalized.match(/.{1,1400}(?:\s|$)/g)?.map((content, index) => ({ id: randomUUID(), tenantId: resolvedTenantId, versionLabel: 'v1', chunkIndex: index, content: content.trim() })).filter((chunk) => chunk.content.length > 20) ?? []
   const documentId = randomUUID()
   const sha256 = createHash('sha256').update(bytes).digest('hex')
-  await db.insert(documents).values({ id: documentId, tenantId: resolvedTenantId, title: file.name, sourceType: 'upload', mimeType: file.type, status: 'indexed', sha256 })
+  await db.insert(documents).values({ id: documentId, tenantId: resolvedTenantId, title: file.name, sourceType: 'upload', mimeType: file.type, status: 'ready', sha256 })
   if (chunks.length) await db.insert(documentChunks).values(chunks.map((chunk) => ({ ...chunk, documentId })))
-    return NextResponse.json({ id: documentId, title: file.name, status: 'indexed', chunks: chunks.length, source: 'native-nextjs' }, { status: 201 })
+    return NextResponse.json({ id: documentId, title: file.name, status: 'ready', chunks: chunks.length, source: 'native-nextjs' }, { status: 201 })
   } catch (error) {
     console.error('[v0] document upload failed', error)
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Document indexing failed' }, { status: 500 })
