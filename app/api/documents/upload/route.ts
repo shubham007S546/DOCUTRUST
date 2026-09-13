@@ -3,7 +3,7 @@ import { headers } from 'next/headers'
 import { randomUUID, createHash } from 'node:crypto'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { documents, documentChunks } from '@/lib/db/schema'
+import { tenants, documents, documentChunks } from '@/lib/db/schema'
 
 export const runtime = 'nodejs'
 
@@ -30,6 +30,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Please sign in before uploading a policy.' }, { status: 401 })
   }
   const tenantId = tenantUuid(session.user.id)
+  await db.insert(tenants).values({ id: tenantId, slug: `user-${session.user.id}`, mode: 'private' }).onConflictDoNothing({ target: tenants.id })
 
   const formData = await request.formData()
   const file = formData.get('file')

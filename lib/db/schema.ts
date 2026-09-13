@@ -46,6 +46,13 @@ export const verification = pgTable('verification', {
   updatedAt: timestamp('updatedAt').defaultNow(),
 })
 
+export const tenants = pgTable('docutrust_tenants', {
+  id: uuid('id').primaryKey(),
+  slug: text('slug').notNull().unique(),
+  mode: text('mode').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
 export const documents = pgTable('docutrust_documents', {
   id: uuid('id').primaryKey(),
   tenantId: uuid('tenant_id').notNull(),
