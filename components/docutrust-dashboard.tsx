@@ -23,6 +23,7 @@ export function DocuTrustDashboard() {
   const [view, setView] = useState<WorkspaceView>('overview')
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   useEffect(() => { const saved = window.localStorage.getItem('docutrust-theme') as 'light' | 'dark' | null; const next = saved ?? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); setTheme(next); document.documentElement.classList.toggle('dark', next === 'dark') }, [])
+  useEffect(() => { void fetch('/api/documents').then((response) => response.ok ? response.json() : null).then((payload) => { if (!payload?.documents) return; setLiveDocuments(payload.documents.map((doc: { id: string; title: string; mimeType: string; status: string; updatedAt: string }) => ({ id: doc.id, name: doc.title, version: 'v1', type: doc.mimeType === 'application/pdf' ? 'PDF' : doc.mimeType.toUpperCase(), status: doc.status, updated: new Date(doc.updatedAt).toLocaleDateString(), pages: 0, owner: 'Workspace', effectiveDate: 'Not specified', chunks: 0 }))); setUploaded(payload.documents.length > 0) }).catch(() => undefined) }, [])
   function toggleTheme() { const next = theme === 'dark' ? 'light' : 'dark'; setTheme(next); document.documentElement.classList.toggle('dark', next === 'dark'); window.localStorage.setItem('docutrust-theme', next) }
   const [query, setQuery] = useState('')
   const [running, setRunning] = useState(false)

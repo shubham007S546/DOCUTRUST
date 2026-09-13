@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { headers } from 'next/headers'
 import { randomUUID, createHash } from 'node:crypto'
 import { auth } from '@/lib/auth'
+import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { tenants, documents, documentChunks } from '@/lib/db/schema'
 
@@ -22,6 +23,14 @@ const ALLOWED_TYPES = new Set([
 function tenantUuid(userId: string) {
   const hex = createHash('sha256').update(`docutrust-tenant:${userId}`).digest('hex').slice(0, 32)
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20)}`
+}
+
+export async function GET() {
+  const session = await auth.api.getSession({ headers: await headers() })
+  if (!session?.user?.id) return NextResponse.json({ documents: [] }, { status: 401 })
+  const tenantId = tenantUuid(session.user.id)
+  const rows = await db.select().from(documents).where(eq(documents.tenantId, tenantId))
+  return NextResponse.json({ documents: rows })
 }
 
 export async function POST(request: NextRequest) {

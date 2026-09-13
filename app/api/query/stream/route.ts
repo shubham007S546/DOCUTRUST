@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.id) return Response.json({ error: 'Please sign in before asking a policy question.' }, { status: 401 })
   const tenantId = tenantUuid(session.user.id)
-  const rows = await db.select({ chunk: documentChunks, document: documents }).from(documentChunks).innerJoin(documents, eq(documentChunks.documentId, documents.id)).where(and(eq(documentChunks.tenantId, tenantId), eq(documents.status, 'indexed')))
+  const rows = await db.select({ chunk: documentChunks, document: documents }).from(documentChunks).innerJoin(documents, eq(documentChunks.documentId, documents.id)).where(and(eq(documentChunks.tenantId, tenantId), eq(documents.status, 'ready')))
   const queryWords = words(query)
   const evidence = rows.map(({ chunk, document }) => { const contentWords = words(chunk.content); const score = [...queryWords].filter((word) => contentWords.has(word)).length / Math.max(queryWords.size, 1); return { chunk, document, score } }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score).slice(0, 6)
   const runId = randomUUID(); const encoder = new TextEncoder()
