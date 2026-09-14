@@ -10,6 +10,16 @@ import { documentChunks, documents } from '@/lib/db/schema'
 function cleanPolicyText(value: string) { return value.replace(/<br\s*\/?>/gi, '\n').replace(/\[[^\]]*†[^\]]*\]/g, '').replace(/\|\s*/g, '').replace(/\*{1,3}/g, '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').split('\n').map((line) => line.trim()).filter(Boolean).join('\n').trim() }
 function words(value: string) { return new Set(value.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((word) => word.length > 2).map((word) => word.endsWith('s') ? word.slice(0, -1) : word)) }
 function tenantUuid(userId: string) { const hex = createHash('sha256').update(`docutrust-tenant:${userId}`).digest('hex').slice(0, 32); return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20)}` }
+function getSmallTalkReply(query: string, name: string) {
+  const normalized = query.toLowerCase().replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim()
+  if (/^(hi|hii|hiii|hello|helo|hlo|hey|good morning|good afternoon|good evening|thanks|thank you|thx)$/.test(normalized)) {
+    if (/^(thanks|thank you|thx)$/.test(normalized)) return `You’re welcome, ${name}. Ask me about any uploaded policy when you’re ready.`
+    const hour = new Date().getHours()
+    const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+    return `${greeting}, ${name}. How can I help you with your uploaded policies?`
+  }
+  return null
+}
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}))
@@ -17,13 +27,19 @@ export async function POST(request: Request) {
   if (!query) return Response.json({ error: 'Enter a policy question.' }, { status: 400 })
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.id) return Response.json({ error: 'Please sign in before asking a policy question.' }, { status: 401 })
+  const name = session.user.name?.trim().split(/\s+/)[0] || 'there'
+  const smallTalkReply = getSmallTalkReply(query, name)
+  const runId = randomUUID(); const encoder = new TextEncoder()
+  const send = (controller: ReadableStreamDefaultController, payload: object | string) => controller.enqueue(encoder.encode(`data: ${typeof payload === 'string' ? payload : JSON.stringify(payload)}\n\n`))
+  if (smallTalkReply) {
+    const stream = new ReadableStream({ start(controller) { send(controller, { type: 'run_result', run_id: runId, answer: smallTalkReply, confidence: 1, requires_review: false, evidence_state: { status: 'not_applicable', decision: 'conversation', coverage: 1, consistency: 1, citation_completeness: 1, rationale: 'Conversational greeting handled without policy retrieval.', receipts: [] }, agents: [], provider: { mode: 'built-in-greeting' } }); send(controller, '[DONE]'); controller.close() } })
+    return new Response(stream, { headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', Connection: 'keep-alive' } })
+  }
   const tenantId = tenantUuid(session.user.id)
   const rows = await db.select({ chunk: documentChunks, document: documents }).from(documentChunks).innerJoin(documents, eq(documentChunks.documentId, documents.id)).where(and(eq(documentChunks.tenantId, tenantId), eq(documents.status, 'ready')))
   const queryWords = words(query)
   const ranked = rows.map(({ chunk, document }) => { const contentWords = words(chunk.content); const score = [...queryWords].filter((word) => contentWords.has(word)).length / Math.max(queryWords.size, 1); return { chunk, document, score } }).sort((a, b) => b.score - a.score)
   const evidence = ranked.some((item) => item.score > 0) ? ranked.filter((item) => item.score > 0).slice(0, 6) : ranked.slice(0, 6)
-  const runId = randomUUID(); const encoder = new TextEncoder()
-  const send = (controller: ReadableStreamDefaultController, payload: object | string) => controller.enqueue(encoder.encode(`data: ${typeof payload === 'string' ? payload : JSON.stringify(payload)}\n\n`))
   const stream = new ReadableStream({ async start(controller) { try {
     send(controller, { type: 'run_queued', run_id: runId }); send(controller, { type: 'stage', stage: 'Hybrid Retrieval', status: 'completed', detail: `Matched ${evidence.length} passage${evidence.length === 1 ? '' : 's'} from uploaded policies.` })
     if (!evidence.length) { send(controller, { type: 'run_result', run_id: runId, answer: 'The uploaded policies do not establish an answer to this question.', confidence: 0, requires_review: true, evidence_state: { status: 'insufficient', decision: 'abstain', coverage: 0, consistency: 1, citation_completeness: 0, rationale: 'No uploaded policy passage matched the question.', receipts: [] }, agents: [], provider: { mode: 'native-nextjs' } }); send(controller, '[DONE]'); controller.close(); return }
