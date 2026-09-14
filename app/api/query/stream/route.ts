@@ -38,6 +38,8 @@ export async function POST(request: Request) {
     const fallback = evidence[0]?.chunk.content ?? 'The uploaded policy contains relevant evidence, but the answer generator is unavailable.'
     send(controller, { type: 'stage', stage: 'Fallback', status: 'completed', detail: 'Returned the matched policy passage because the answer provider was unavailable.' })
     send(controller, { type: 'run_result', run_id: runId, answer: fallback, confidence: Math.min(0.75, 0.45 + (evidence[0]?.score ?? 0) * 0.3), requires_review: true, evidence_state: { status: 'grounded', decision: 'review', coverage: evidence[0]?.score ?? 0, consistency: 1, citation_completeness: 1, rationale: 'Answer returned directly from matched uploaded policy evidence.', receipts: evidence.map(({ chunk, document, score }, index) => ({ document_id: document.id, document: document.title, version: chunk.versionLabel, section: `Chunk ${chunk.chunkIndex + 1}`, quote: chunk.content.slice(0, 320), score: Math.min(0.99, 0.55 + score * 0.4), page: null })) }, agents: [], provider: { mode: 'evidence-fallback' } })
+    send(controller, { type: 'error', error: error instanceof Error ? error.message : 'Policy analysis failed.' })
+    send(controller, '[DONE]')
     controller.close()
   } } })
   return new Response(stream, { headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', Connection: 'keep-alive' } })
