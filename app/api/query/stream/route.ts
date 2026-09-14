@@ -7,7 +7,7 @@ import { and, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { documentChunks, documents } from '@/lib/db/schema'
 
-function words(value: string) { return new Set(value.toLowerCase().replace(/[^a-z0-9\\s]/g, ' ').split(/\\s+/).filter((word) => word.length > 2)) }
+function words(value: string) { return new Set(value.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((word) => word.length > 2).map((word) => word.endsWith('s') ? word.slice(0, -1) : word)) }
 function tenantUuid(userId: string) { const hex = createHash('sha256').update(`docutrust-tenant:${userId}`).digest('hex').slice(0, 32); return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20)}` }
 
 export async function POST(request: Request) {
@@ -19,7 +19,8 @@ export async function POST(request: Request) {
   const tenantId = tenantUuid(session.user.id)
   const rows = await db.select({ chunk: documentChunks, document: documents }).from(documentChunks).innerJoin(documents, eq(documentChunks.documentId, documents.id)).where(and(eq(documentChunks.tenantId, tenantId), eq(documents.status, 'ready')))
   const queryWords = words(query)
-  const evidence = rows.map(({ chunk, document }) => { const contentWords = words(chunk.content); const score = [...queryWords].filter((word) => contentWords.has(word)).length / Math.max(queryWords.size, 1); return { chunk, document, score } }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score).slice(0, 6)
+  const ranked = rows.map(({ chunk, document }) => { const contentWords = words(chunk.content); const score = [...queryWords].filter((word) => contentWords.has(word)).length / Math.max(queryWords.size, 1); return { chunk, document, score } }).sort((a, b) => b.score - a.score)
+  const evidence = ranked.some((item) => item.score > 0) ? ranked.filter((item) => item.score > 0).slice(0, 6) : ranked.slice(0, 6)
   const runId = randomUUID(); const encoder = new TextEncoder()
   const send = (controller: ReadableStreamDefaultController, payload: object | string) => controller.enqueue(encoder.encode(`data: ${typeof payload === 'string' ? payload : JSON.stringify(payload)}\n\n`))
   const stream = new ReadableStream({ async start(controller) { try {
