@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   const queryWords = words(query)
   const evidence = rows.map(({ chunk, document }) => { const contentWords = words(chunk.content); const score = [...queryWords].filter((word) => contentWords.has(word)).length / Math.max(queryWords.size, 1); return { chunk, document, score } }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score).slice(0, 6)
   const runId = randomUUID(); const encoder = new TextEncoder()
-  const send = (controller: ReadableStreamDefaultController, payload: object | string) => controller.enqueue(encoder.encode(`data: ${typeof payload === 'string' ? payload : JSON.stringify(payload)}\\n\\n`))
+  const send = (controller: ReadableStreamDefaultController, payload: object | string) => controller.enqueue(encoder.encode(`data: ${typeof payload === 'string' ? payload : JSON.stringify(payload)}\n\n`))
   const stream = new ReadableStream({ async start(controller) { try {
     send(controller, { type: 'run_queued', run_id: runId }); send(controller, { type: 'stage', stage: 'Hybrid Retrieval', status: 'completed', detail: `Matched ${evidence.length} passage${evidence.length === 1 ? '' : 's'} from uploaded policies.` })
     if (!evidence.length) { send(controller, { type: 'run_result', run_id: runId, answer: 'The uploaded policies do not establish an answer to this question.', confidence: 0, requires_review: true, evidence_state: { status: 'insufficient', decision: 'abstain', coverage: 0, consistency: 1, citation_completeness: 0, rationale: 'No uploaded policy passage matched the question.', receipts: [] }, agents: [], provider: { mode: 'native-nextjs' } }); send(controller, '[DONE]'); controller.close(); return }
