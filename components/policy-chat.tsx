@@ -7,7 +7,7 @@ type Citation = { document_id: string; section: string; quote: string; version: 
 type Message = { role: 'user' | 'assistant'; content: string; citations?: Citation[]; confidence?: number }
 
 function cleanAnswer(value: string) {
-  return value.replace(/<br\s*\/?>/gi, '\n').replace(/\[[^\]]*†[^\]]*\]/g, '').replace(/\*{1,3}/g, '').replace(/\|\s*/g, '').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim()
+  return value.replace(/<br\s*\/?>/gi, '\n').replace(/\[[^\]]*†[^\]]*\]/g, '').replace(/【[^】]*】/g, '').replace(/\[(?:\d+(?:\s*,\s*)?)+\]/g, '').replace(/\*{1,3}/g, '').replace(/\|\s*/g, '').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim()
 }
 
 function cleanCitation(value: string) {
