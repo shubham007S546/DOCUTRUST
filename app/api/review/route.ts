@@ -28,6 +28,11 @@ export async function POST(request: Request) {
   const tenantId = tenantUuid(session.user.id)
   const run = await db.select({ id: queryRuns.id }).from(queryRuns).where(and(eq(queryRuns.id, body.run_id), eq(queryRuns.tenantId, tenantId))).limit(1)
   if (!run.length) return Response.json({ error: 'Review item not found.' }, { status: 404 })
-  await db.insert(reviews).values({ id: randomUUID(), tenantId, queryRunId: body.run_id, reviewerId: session.user.id, decision: body.decision, notes: typeof body.note === 'string' ? body.note : null })
+  const existing = await db.select({ id: reviews.id }).from(reviews).where(and(eq(reviews.queryRunId, body.run_id), eq(reviews.tenantId, tenantId))).limit(1)
+  if (existing.length) {
+    await db.update(reviews).set({ reviewerId: session.user.id, decision: body.decision, notes: typeof body.note === 'string' ? body.note : null, createdAt: new Date() }).where(and(eq(reviews.id, existing[0].id), eq(reviews.tenantId, tenantId)))
+  } else {
+    await db.insert(reviews).values({ id: randomUUID(), tenantId, queryRunId: body.run_id, reviewerId: session.user.id, decision: body.decision, notes: typeof body.note === 'string' ? body.note : null })
+  }
   return Response.json({ ok: true })
 }
