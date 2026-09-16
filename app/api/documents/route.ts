@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { headers } from 'next/headers'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { documents } from '@/lib/db/schema'
+import { documentChunks, documents } from '@/lib/db/schema'
 
 export const runtime = 'nodejs'
 
@@ -17,6 +17,30 @@ export async function GET() {
   if (!session?.user?.id) return Response.json({ documents: [] }, { status: 401 })
   const rows = await db.select().from(documents).where(eq(documents.tenantId, tenantUuid(session.user.id)))
   return Response.json({ documents: rows })
+}
+
+export async function PATCH(request: NextRequest) {
+  const session = await auth.api.getSession({ headers: await headers() })
+  if (!session?.user?.id) return NextResponse.json({ error: 'Sign in required' }, { status: 401 })
+  const tenantId = tenantUuid(session.user.id)
+  const body = await request.json().catch(() => ({}))
+  if (typeof body.id !== 'string' || body.action !== 'reindex') return NextResponse.json({ error: 'A document id and reindex action are required' }, { status: 400 })
+  const existing = await db.select({ id: documents.id }).from(documents).where(and(eq(documents.id, body.id), eq(documents.tenantId, tenantId))).limit(1)
+  if (!existing.length) return NextResponse.json({ error: 'Document not found' }, { status: 404 })
+  await db.update(documents).set({ status: 'ready', updatedAt: new Date() }).where(and(eq(documents.id, body.id), eq(documents.tenantId, tenantId)))
+  return NextResponse.json({ ok: true, status: 'ready' })
+}
+
+export async function DELETE(request: NextRequest) {
+  const session = await auth.api.getSession({ headers: await headers() })
+  if (!session?.user?.id) return NextResponse.json({ error: 'Sign in required' }, { status: 401 })
+  const tenantId = tenantUuid(session.user.id)
+  const body = await request.json().catch(() => ({}))
+  if (typeof body.id !== 'string') return NextResponse.json({ error: 'A document id is required' }, { status: 400 })
+  await db.delete(documentChunks).where(and(eq(documentChunks.documentId, body.id), eq(documentChunks.tenantId, tenantId)))
+  const deleted = await db.delete(documents).where(and(eq(documents.id, body.id), eq(documents.tenantId, tenantId))).returning({ id: documents.id })
+  if (!deleted.length) return NextResponse.json({ error: 'Document not found' }, { status: 404 })
+  return NextResponse.json({ ok: true, id: body.id })
 }
 
 export async function HEAD() {
