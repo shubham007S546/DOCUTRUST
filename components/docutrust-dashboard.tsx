@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Check, ChevronRight, CircleHelp, ClipboardCheck, CloudUpload, FileText, FolderOpen, LayoutDashboard, LoaderCircle, Moon, RefreshCw, Search, ShieldCheck, Sparkles, Sun, Trash2, Users, X, Zap } from 'lucide-react'
+import { AlertTriangle, ArrowUpRight, Check, ChevronRight, CircleHelp, ClipboardCheck, CloudUpload, FileText, FolderOpen, LayoutDashboard, LoaderCircle, Moon, RefreshCw, Search, ShieldCheck, Sparkles, Sun, Trash2, Users, X, Zap } from 'lucide-react'
 type PolicyDocument = { id: string; name: string; version: string; type: string; status: string; updated: string; pages: number; owner: string; effectiveDate: string; chunks: number }
 type ReviewItem = { id: string; title: string; kind: string; confidence: number; owner: string; created: string; status: string }
 const documents: PolicyDocument[] = []
