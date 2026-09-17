@@ -5,13 +5,13 @@ import { headers } from 'next/headers'
 import { auth } from '@/lib/auth'
 import { and, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { documentChunks, documents, queryRuns } from '@/lib/db/schema'
+import { documentChunks, documents, queryRuns, tenants } from '@/lib/db/schema'
 
 function cleanPolicyText(value: string) { return value.replace(/<br\s*\/?>/gi, '\n').replace(/\[[^\]]*†[^\]]*\]/g, '').replace(/【[^】]*】/g, '').replace(/\[(?:\d+(?:\s*,\s*)?)+\]/g, '').replace(/\|\s*/g, '').replace(/\*{1,3}/g, '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').split('\n').map((line) => line.trim()).filter(Boolean).join('\n').trim() }
 function words(value: string) { return new Set(value.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((word) => word.length > 2).map((word) => word.endsWith('s') ? word.slice(0, -1) : word)) }
 function tenantUuid(userId: string) { const hex = createHash('sha256').update(`docutrust-tenant:${userId}`).digest('hex').slice(0, 32); return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20)}` }
 async function persistRun(values: { id: string; tenantId: string; actorId: string; question: string; status: string; answer: string; confidence: number; evidence: unknown[]; trace: unknown[]; modelId?: string }) {
-  await db.insert(queryRuns).values({ id: values.id, tenantId: values.tenantId, actorId: values.actorId, question: values.question, status: values.status, answer: values.answer, confidence: String(values.confidence), evidence: values.evidence, trace: values.trace, modelId: values.modelId, promptVersion: 'docutrust-v2', completedAt: new Date() }).onConflictDoNothing()
+  await db.insert(queryRuns).values({ id: values.id, tenantId: values.tenantId, actorId: values.actorId, question: values.question, status: values.status, answer: values.answer, confidence: values.confidence, evidence: values.evidence, trace: values.trace, modelId: values.modelId, promptVersion: 'docutrust-v2', completedAt: new Date() }).onConflictDoNothing()
 }
 
 function getSmallTalkReply(query: string, name: string) {
@@ -40,6 +40,7 @@ export async function POST(request: Request) {
     return new Response(stream, { headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', Connection: 'keep-alive' } })
   }
   const tenantId = tenantUuid(session.user.id)
+  await db.insert(tenants).values({ id: tenantId, slug: `user-${session.user.id}`, mode: 'private' }).onConflictDoNothing()
   const rows = await db.select({ chunk: documentChunks, document: documents }).from(documentChunks).innerJoin(documents, eq(documentChunks.documentId, documents.id)).where(and(eq(documentChunks.tenantId, tenantId), eq(documents.status, 'ready')))
   const queryWords = words(query)
   const ranked = rows.map(({ chunk, document }) => { const contentWords = words(chunk.content); const score = [...queryWords].filter((word) => contentWords.has(word)).length / Math.max(queryWords.size, 1); return { chunk, document, score } }).sort((a, b) => b.score - a.score)
