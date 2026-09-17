@@ -14,15 +14,35 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
     setError(null)
     setPending(true)
     const data = new FormData(event.currentTarget)
-    const email = String(data.get('email') ?? '')
+    const email = String(data.get('email') ?? '').trim().toLowerCase()
     const password = String(data.get('password') ?? '')
-    const name = String(data.get('name') ?? '')
-    const result = mode === 'sign-up'
-      ? await authClient.signUp.email({ email, password, name })
-      : await authClient.signIn.email({ email, password })
-    setPending(false)
-    if (result.error) {
-      setError('Unable to authenticate with those credentials.')
+    const name = String(data.get('name') ?? '').trim()
+    if (mode === 'sign-up' && password.length < 8) {
+      setPending(false)
+      setError('Password must be at least 8 characters.')
+      return
+    }
+    try {
+      const result = mode === 'sign-up'
+        ? await authClient.signUp.email({ email, password, name })
+        : await authClient.signIn.email({ email, password })
+      setPending(false)
+      if (result.error) {
+        const code = String(result.error.code ?? '')
+        if (code === 'USER_ALREADY_EXISTS' || code === 'EMAIL_ALREADY_EXISTS') {
+          setError('An account already exists for this email. Use Sign in instead.')
+        } else if (code === 'INVALID_EMAIL') {
+          setError('Enter a valid email address.')
+        } else if (code === 'INVALID_PASSWORD') {
+          setError('The password is incorrect. Check it and try again.')
+        } else {
+          setError(mode === 'sign-up' ? 'The account could not be created. Try a different email or sign in if you already registered.' : 'The email or password is incorrect.')
+        }
+        return
+      }
+    } catch {
+      setPending(false)
+      setError('Authentication is temporarily unavailable. Please try again.')
       return
     }
     router.push('/')
