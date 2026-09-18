@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
+import { boolean, integer, jsonb, numeric, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core'
 
 export const user = pgTable('user', {
   id: text('id').primaryKey(),
@@ -46,6 +46,13 @@ export const verification = pgTable('verification', {
   updatedAt: timestamp('updatedAt').defaultNow(),
 })
 
+export const tenants = pgTable('docutrust_tenants', {
+  id: uuid('id').primaryKey(),
+  slug: text('slug').notNull().unique(),
+  mode: text('mode').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
 export const documents = pgTable('docutrust_documents', {
   id: uuid('id').primaryKey(),
   tenantId: uuid('tenant_id').notNull(),
@@ -65,7 +72,7 @@ export const queryRuns = pgTable('docutrust_query_runs', {
   question: text('question').notNull(),
   status: varchar('status', { length: 24 }).notNull(),
   answer: text('answer'),
-  confidence: text('confidence'),
+  confidence: numeric('confidence', { precision: 5, scale: 4 }),
   evidence: jsonb('evidence').notNull().default([]),
   trace: jsonb('trace').notNull().default([]),
   modelId: text('model_id'),
