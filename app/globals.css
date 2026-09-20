@@ -23,6 +23,8 @@
 
 .dark { color-scheme: dark; --background: oklch(0.16 0.02 220); --foreground: oklch(0.94 0.015 160); --card: oklch(0.205 0.025 220); --card-foreground: oklch(0.94 0.015 160); --primary: oklch(0.72 0.11 175); --primary-foreground: oklch(0.16 0.02 220); --secondary: oklch(0.25 0.025 220); --secondary-foreground: oklch(0.94 0.015 160); --muted: oklch(0.27 0.025 220); --muted-foreground: oklch(0.72 0.025 200); --border: oklch(0.34 0.025 220); --ring: oklch(0.72 0.11 175); }
 
-@layer base { * { @apply border-border outline-ring/50; } body { @apply bg-background text-foreground font-sans; } button, textarea { font: inherit; } }
+@layer base { * { @apply border-border outline-ring/50; } body { @apply bg-background text-foreground font-sans; background-image: radial-gradient(circle at 8% 0%, color-mix(in oklab, var(--ring) 10%, transparent), transparent 28rem), radial-gradient(circle at 92% 12%, color-mix(in oklab, var(--primary) 7%, transparent), transparent 32rem); } button, textarea { font: inherit; } }
+
+@layer utilities { .dashboard-shell { background-image: linear-gradient(135deg, color-mix(in oklab, var(--card) 88%, transparent), transparent 45%), radial-gradient(circle at 80% 0%, color-mix(in oklab, var(--ring) 8%, transparent), transparent 26rem); } .glass-card { background: color-mix(in oklab, var(--card) 88%, transparent); box-shadow: 0 18px 60px color-mix(in oklab, var(--primary) 7%, transparent); backdrop-filter: blur(12px); } .dashboard-shell .rounded-xl.border.bg-card { transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease; } .dashboard-shell .rounded-xl.border.bg-card:hover { border-color: color-mix(in oklab, var(--ring) 42%, var(--border)); box-shadow: 0 14px 42px color-mix(in oklab, var(--primary) 8%, transparent); } }
 
 @media (max-width: 640px) { .min-h-\[calc\(100vh-4rem\)\] { min-height: auto; } }
