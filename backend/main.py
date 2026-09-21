@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from backend.config import settings
-from backend.agents.contracts import Evidence
+from backend.agents.contracts import Evidence, plan_to_dict, result_to_dict, reflection_to_dict
 from backend.graph.workflow import run_policy_graph
 from backend.repositories.store import store
 from backend.security.tenant import RequestContext, request_context, require_role
@@ -83,7 +83,7 @@ async def query(request: QueryIn, context: RequestContext = Depends(request_cont
         evidence = [Evidence(hit.document_id.encode('utf-8', 'replace').decode('utf-8'), hit.version, hit.section.encode('utf-8', 'replace').decode('utf-8'), hit.quote.encode('utf-8', 'replace').decode('utf-8'), hit.start, hit.end, hit.lexical_score) for hit in hits]
     state = await run_policy_graph(request.query.strip(), context.tenant_id, context.mode, evidence)
     await store.append(context.tenant_id, "runs", {"id": state.run_id, "query": state.query, "confidence": state.overall_confidence, "requires_review": state.requires_review, "events": state.events})
-    return {"run_id": state.run_id, "answer": state.final_answer, "confidence": state.overall_confidence, "requires_review": state.requires_review, "evidence_state": state.evidence_state, "agents": [agent.__dict__ for agent in state.agents], "events": state.events, "provider": provider_status()}
+    return {"run_id": state.run_id, "status": "needs_review" if state.requires_review else "completed", "goal": state.goal, "plan": plan_to_dict(state.plan), "actions": [tool.__dict__ for tool in state.tool_calls], "tools": [tool.name for tool in state.tool_calls], "evidence": [evidence.__dict__ for evidence in state.evidence], "reflection": reflection_to_dict(state.reflections[-1] if state.reflections else None), "answer": state.final_answer, "confidence": state.overall_confidence, "requires_review": state.requires_review, "evidence_state": state.evidence_state, "agents": [result_to_dict(agent) for agent in state.agents], "events": state.events, "provider": provider_status()}
 
 @app.post("/api/query/stream")
 async def query_stream(request: QueryIn, context: RequestContext = Depends(request_context)) -> StreamingResponse:
@@ -101,7 +101,7 @@ async def query_stream(request: QueryIn, context: RequestContext = Depends(reque
             await store.append(context.tenant_id, "runs", {"id": state.run_id, "query": state.query, "answer": state.final_answer, "confidence": state.overall_confidence, "requires_review": state.requires_review, "events": state.events})
             for event in state.events:
                 yield f"data: {json.dumps(event)}\n\n"
-            yield f"data: {json.dumps({'type': 'run_result', 'run_id': state.run_id, 'answer': state.final_answer, 'confidence': state.overall_confidence, 'requires_review': state.requires_review, 'evidence_state': state.evidence_state, 'agents': [agent.__dict__ for agent in state.agents], 'provider': provider_status()})}\n\n"
+            yield f"data: {json.dumps({'type': 'run_result', 'run_id': state.run_id, 'status': 'needs_review' if state.requires_review else 'completed', 'goal': state.goal, 'plan': plan_to_dict(state.plan), 'actions': [tool.__dict__ for tool in state.tool_calls], 'tools': [tool.name for tool in state.tool_calls], 'reflection': reflection_to_dict(state.reflections[-1] if state.reflections else None), 'answer': state.final_answer, 'confidence': state.overall_confidence, 'requires_review': state.requires_review, 'evidence_state': state.evidence_state, 'agents': [result_to_dict(agent) for agent in state.agents], 'provider': provider_status()})}\n\n"
         except Exception as error:
             yield f"data: {json.dumps({'type': 'run_failed', 'message': str(error) or 'The run could not be completed safely.'})}\n\n"
         yield "data: [DONE]\n\n"
