@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, createHmac } from 'node:crypto'
 import { headers } from 'next/headers'
 import { auth } from '@/lib/auth'
 
@@ -15,14 +15,14 @@ export async function POST(request: Request) {
 
   const backendUrl = process.env.BACKEND_API_URL ?? 'http://localhost:8000'
   const body = await request.text()
+  const payload = Buffer.from(JSON.stringify({ sub: session.user.id, tenant: tenantUuid(session.user.id), role: 'reviewer', iat: Math.floor(Date.now() / 1000), jti: crypto.randomUUID() })).toString('base64url')
+  const assertion = `${payload}.${createHmac('sha256', process.env.BETTER_AUTH_SECRET ?? '').update(payload).digest('base64url')}`
   const response = await fetch(`${backendUrl}/api/query/stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-Docutrust-Mode': 'private',
-      'X-Tenant-Id': tenantUuid(session.user.id),
-      'X-User-Id': session.user.id,
-      'X-Role': 'reviewer',
+      'X-Internal-Assertion': assertion,
     },
     body,
     cache: 'no-store',

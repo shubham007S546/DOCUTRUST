@@ -98,4 +98,9 @@ export const documentChunks = pgTable('docutrust_document_chunks', {
   versionLabel: text('version_label').notNull(),
   chunkIndex: integer('chunk_index').notNull(),
   content: text('content').notNull(),
+  charStart: integer('char_start').notNull().default(0),
+  charEnd: integer('char_end').notNull().default(0),
+  pageStart: integer('page_start'),
+  pageEnd: integer('page_end'),
+  searchVector: text('search_vector'),
 })
