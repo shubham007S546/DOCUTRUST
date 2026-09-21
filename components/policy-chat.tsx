@@ -1,10 +1,10 @@
 'use client'
 
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import { ArrowUp, Bot, FileText, LoaderCircle, User } from 'lucide-react'
 
 type Citation = { document_id: string; section: string; quote: string; version: string; score: number }
-type Message = { role: 'user' | 'assistant'; content: string; citations?: Citation[]; confidence?: number }
+export type Message = { role: 'user' | 'assistant'; content: string; citations?: Citation[]; confidence?: number }
 
 function cleanAnswer(value: string) {
   return value.replace(/<br\s*\/?>/gi, '\n').replace(/\[[^\]]*†[^\]]*\]/g, '').replace(/【[^】]*】/g, '').replace(/\[(?:\d+(?:\s*,\s*)?)+\]/g, '').replace(/\*{1,3}/g, '').replace(/\|\s*/g, '').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim()
@@ -14,8 +14,9 @@ function cleanCitation(value: string) {
   return cleanAnswer(value).replace(/�+/g, '').replace(/ÃƒÂ|Ã‚/g, '').trim()
 }
 
-export function PolicyChat({ initialQuery, onRun }: { initialQuery: string; onRun: (query: string) => Promise<{ answer: string; confidence: number; citations: Citation[] }> }) {
-  const [messages, setMessages] = useState<Message[]>([])
+export function PolicyChat({ initialQuery, initialMessages = [], onRun }: { initialQuery: string; initialMessages?: Message[]; onRun: (query: string) => Promise<{ answer: string; confidence: number; citations: Citation[] }> }) {
+  const [messages, setMessages] = useState<Message[]>(initialMessages)
+  useEffect(() => { setMessages(initialMessages) }, [initialMessages])
   const [value, setValue] = useState('')
   const [loading, setLoading] = useState(false)
 
