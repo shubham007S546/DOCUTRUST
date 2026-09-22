@@ -10,6 +10,7 @@ from backend.agents.contracts import AgentPlan, AgentResult, ClaimVerification, 
 from backend.evidence_intelligence import assess_evidence
 from backend.providers.fallback import provider_chain
 from backend.providers.llm_gateway import GatewayError
+from backend.tools.registry import detect_conflicts, verify_claim
 
 SPECIALISTS = {
     "policy": "Analyze policy requirements and exceptions.",
@@ -22,20 +23,23 @@ class PlannerError(ValueError):
     pass
 
 
-def _execute_tool(name: str, arguments: dict, state: RunState, evidence: list[Evidence], iteration: int) -> dict:
+async def _execute_tool(name: str, arguments: dict, state: RunState, evidence: list[Evidence], iteration: int, retriever=None) -> dict:
     if name not in SAFE_TOOLS:
         raise PlannerError(f"Tool is not allowlisted: {name}")
     if len(state.tool_calls) >= MAX_TOOL_CALLS:
         raise PlannerError("Tool-call budget exhausted")
     state.emit("tool_started", tool=name, arguments=arguments, iteration=iteration)
     if name in {"search_documents", "retrieve_document_sections"}:
-        result = {"count": len(evidence), "evidence_ids": [item.document_id for item in evidence]}
+        if retriever is not None:
+            hits = await retriever.search(state.tenant_id, str(arguments.get('query', state.query)), int(arguments.get('top_k', arguments.get('limit', 8))))
+            evidence[:] = [Evidence(hit.document_id, hit.version, hit.section, hit.quote, hit.start, hit.end, hit.lexical_score, 'lexical_database') for hit in hits]
+        result = {"count": len(evidence), "evidence_ids": [item.document_id for item in evidence], "retrieval_method": 'database' if retriever is not None else 'provided'}
     elif name == "inspect_document_metadata":
         result = {"documents": sorted({item.document_id for item in evidence})}
     elif name == "detect_conflicts":
-        result = {"checked": len(evidence), "conflicts": []}
+        result = detect_conflicts(evidence).data
     elif name == "verify_claim_against_evidence":
-        result = {"verified": bool(evidence), "coverage": min(1.0, len(evidence) / 3)}
+        result = verify_claim(str(arguments.get('claim', state.query)), evidence).data
     elif name == "calculate_confidence":
         result = {"confidence": _confidence(evidence, 0.8 if evidence else 0.0, 0)}
     elif name == "request_human_review":
@@ -107,7 +111,7 @@ def _confidence(evidence: list[Evidence], agreement: float, conflicts: int) -> f
 
 def _verify_claims(answer: str, evidence: list[Evidence], state: RunState) -> list[ClaimVerification]:
     claims: list[ClaimVerification] = []
-    for index, sentence in enumerate(re.split(r'(?<=[.!?])\\s+', answer.strip())):
+    for index, sentence in enumerate(re.split(r'(?<=[.!?])\s+', answer.strip())):
         claim = sentence.strip()
         if not claim or len(claim) < 8: continue
         supporting = [item for item in evidence if any(token in item.quote.lower() for token in re.findall(r'[a-zA-Z]{5,}', claim.lower())[:4])]
@@ -132,7 +136,7 @@ def _reflection(state: RunState, evidence: list[Evidence]) -> ReflectionResult:
     confidence = _confidence(evidence, 0.8 if sufficient else 0.2, conflict_words)
     return ReflectionResult(sufficient, sufficient, [] if sufficient else ["Evidence does not fully establish the requested conclusion."], ["Potential disagreement detected"] if conflict_words else [], action, confidence, "Reflection evaluated evidence coverage, unsupported conclusions, and disagreement signals.")
 
-async def run_policy_graph(query: str, tenant_id: str, mode: str, evidence: list[Evidence] | None = None) -> RunState:
+async def run_policy_graph(query: str, tenant_id: str, mode: str, evidence: list[Evidence] | None = None, retriever=None) -> RunState:
     state = RunState(str(uuid.uuid4()), tenant_id, query, mode, goal=query)
     approved_evidence = list(evidence or [])
     state.evidence = approved_evidence
@@ -146,7 +150,7 @@ async def run_policy_graph(query: str, tenant_id: str, mode: str, evidence: list
         state.plan.current_step = iteration
         state.plan.status = "executing"
         state.emit("iteration_started", iteration=iteration + 1, max_iterations=MAX_ITERATIONS)
-        _execute_tool("search_documents", {"query": query, "tenant_scoped": True}, state, approved_evidence, iteration + 1)
+        await _execute_tool("search_documents", {"query": query, "tenant_scoped": True, "top_k": 8}, state, approved_evidence, iteration + 1, retriever)
         if not approved_evidence:
             state.emit("observation", detail="No evidence was available for the current goal.")
         needed = [task.agent for task in state.plan.subtasks if task.agent in SPECIALISTS and task.agent not in {agent.agent for agent in state.agents}]
@@ -156,14 +160,14 @@ async def run_policy_graph(query: str, tenant_id: str, mode: str, evidence: list
             state.completed_tasks.extend(kind for kind in needed)
         reflection = _reflection(state, approved_evidence)
         state.add_reflection(reflection)
-        _execute_tool("calculate_confidence", {"evidence_count": len(approved_evidence)}, state, approved_evidence, iteration + 1)
+        await _execute_tool("calculate_confidence", {"evidence_count": len(approved_evidence)}, state, approved_evidence, iteration + 1, retriever)
         if reflection.next_action == "resolve_conflict" and len(state.tool_calls) < MAX_TOOL_CALLS:
-            _execute_tool("detect_conflicts", {"agent_count": len(state.agents)}, state, approved_evidence, iteration + 1)
+            await _execute_tool("detect_conflicts", {"agent_count": len(state.agents)}, state, approved_evidence, iteration + 1, retriever)
             conflict = await run_specialist("policy", f"Resolve conflicts in findings for: {query}", approved_evidence, state)
             state.agents.append(AgentResult("conflict", conflict.status, conflict.answer, conflict.confidence, conflict.evidence, conflict.issues, conflict.model, conflict.latency_ms))
             continue
         if reflection.next_action == "retrieve_more_evidence":
-            _execute_tool("retrieve_document_sections", {"query": query, "limit": 6}, state, approved_evidence, iteration + 1)
+            await _execute_tool("retrieve_document_sections", {"query": query, "limit": 6}, state, approved_evidence, iteration + 1, retriever)
             if not approved_evidence:
                 reflection = ReflectionResult(False, False, reflection.unsupported_claims, reflection.conflicts, "request_human_review", 0.0, "Additional retrieval could not find tenant-scoped evidence.")
                 state.add_reflection(reflection)
@@ -171,17 +175,17 @@ async def run_policy_graph(query: str, tenant_id: str, mode: str, evidence: list
         break
     verification = await run_specialist("policy", f"Verify claims against evidence for: {query}", approved_evidence, state)
     state.agents.append(AgentResult("verification", verification.status, verification.answer, verification.confidence, verification.evidence, verification.issues, verification.model, verification.latency_ms))
-    _execute_tool("verify_claim_against_evidence", {"claim_count": len(state.agents)}, state, approved_evidence, len(state.reflections))
+    await _execute_tool("verify_claim_against_evidence", {"claim": state.final_answer or query, "claim_count": len(state.agents)}, state, approved_evidence, len(state.reflections), retriever)
     report = await run_specialist("policy", f"Synthesize the final report for: {query}. Findings: {' '.join(agent.answer for agent in state.agents)}", approved_evidence, state)
     state.agents.append(AgentResult("report", report.status, report.answer, report.confidence, report.evidence, report.issues, report.model, report.latency_ms))
-    _execute_tool("generate_report", {"evidence_count": len(approved_evidence)}, state, approved_evidence, len(state.reflections))
+    await _execute_tool("generate_report", {"evidence_count": len(approved_evidence)}, state, approved_evidence, len(state.reflections), retriever)
     assessment = assess_evidence(query, approved_evidence, [agent.answer for agent in state.agents])
     state.evidence_state = {"status": assessment.status, "decision": assessment.decision, "coverage": assessment.coverage, "consistency": assessment.consistency, "citation_completeness": assessment.citation_completeness, "unresolved_conflicts": list(assessment.unresolved_conflicts), "rationale": assessment.rationale, "receipts": [receipt.__dict__ for receipt in assessment.receipts]}
     latest_reflection = state.reflections[-1] if state.reflections else None
     state.overall_confidence = _confidence(approved_evidence, latest_reflection.confidence if latest_reflection else 0.0, len(state.evidence_state.get("unresolved_conflicts", [])))
     state.requires_review = assessment.decision in {"human_review", "abstain"} or state.overall_confidence < 0.7 or any(agent.status == "failed" for agent in state.agents) or not approved_evidence
     if state.requires_review:
-        _execute_tool("request_human_review", {"reason": state.evidence_state.get("rationale", "Low confidence or insufficient evidence")}, state, approved_evidence, len(state.reflections))
+        await _execute_tool("request_human_review", {"reason": state.evidence_state.get("rationale", "Low confidence or insufficient evidence")}, state, approved_evidence, len(state.reflections), retriever)
     state.final_answer = report.answer if report.status == 'completed' and approved_evidence else 'The uploaded policy does not establish an answer to this question.'
     state.emit('verification_started', evidence_count=len(approved_evidence))
     state.claim_verifications = _verify_claims(state.final_answer, approved_evidence, state)
