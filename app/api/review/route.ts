@@ -20,6 +20,17 @@ export async function GET() {
   return Response.json({ reviews: rows.map(({ run, review }) => ({ id: run.id, title: run.question, question: run.question, answer: run.answer, confidence: Number(run.confidence ?? 0), created: run.createdAt, status: review?.decision === 'approved' ? 'Approved' : review?.decision === 'rejected' ? 'Rejected' : 'Open' })) })
 }
 
+export async function DELETE(request: Request) {
+  const session = await auth.api.getSession({ headers: await headers() })
+  if (!session?.user?.id) return Response.json({ error: 'Please sign in.' }, { status: 401 })
+  const body = await request.json().catch(() => ({}))
+  if (!body.run_id) return Response.json({ error: 'A run_id is required.' }, { status: 400 })
+  const tenantId = tenantUuid(session.user.id)
+  await db.delete(reviews).where(and(eq(reviews.queryRunId, body.run_id), eq(reviews.tenantId, tenantId)))
+  await db.delete(queryRuns).where(and(eq(queryRuns.id, body.run_id), eq(queryRuns.tenantId, tenantId)))
+  return Response.json({ ok: true, id: body.run_id })
+}
+
 export async function POST(request: Request) {
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.id) return Response.json({ error: 'Please sign in.' }, { status: 401 })
