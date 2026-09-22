@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from backend.config import settings
 
-ALLOWED_MIME_TYPES = {"application/pdf", "text/plain", "text/markdown", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
+ALLOWED_MIME_TYPES = {"application/pdf", "text/plain", "text/markdown"}
 
 @dataclass(frozen=True)
 class IngestedChunk:

@@ -10,6 +10,15 @@ function tenantUuid(userId: string) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20)}`
 }
 
+export async function DELETE(request: Request) {
+  const session = await auth.api.getSession({ headers: await headers() })
+  if (!session?.user?.id) return Response.json({ error: 'Please sign in.' }, { status: 401 })
+  const body = await request.json().catch(() => null) as { id?: string } | null
+  if (!body?.id) return Response.json({ error: 'Run id is required.' }, { status: 400 })
+  await db.delete(queryRuns).where(and(eq(queryRuns.id, body.id), eq(queryRuns.tenantId, tenantUuid(session.user.id)), eq(queryRuns.actorId, session.user.id)))
+  return Response.json({ ok: true })
+}
+
 export async function GET() {
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session?.user?.id) return Response.json({ error: 'Please sign in.' }, { status: 401 })

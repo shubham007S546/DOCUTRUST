@@ -15,6 +15,7 @@ class Evidence:
     start: int
     end: int
     score: float
+    retrieval_method: str = "lexical"
 
 @dataclass(frozen=True)
 class PlanTask:
