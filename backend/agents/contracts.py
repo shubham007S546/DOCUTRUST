@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field, asdict
 from typing import Literal
 
+ClaimStatus = Literal['SUPPORTED', 'PARTIALLY_SUPPORTED', 'CONFLICTING', 'INSUFFICIENT', 'HUMAN_REVIEW']
+
 AgentKind = Literal["policy", "privacy", "security", "legal", "conflict", "verification", "report", "synthesis"]
 ActionKind = Literal["retrieve_more_evidence", "ask_specialist", "verify_claims", "resolve_conflict", "finish", "request_human_review"]
 
@@ -30,6 +32,10 @@ class AgentPlan:
     selected_tools: list[str]
     execution_order: list[str]
     success_criteria: list[str]
+    intent: str = 'policy_question'
+    risk_level: Literal['low', 'medium', 'high'] = 'medium'
+    planner_mode: Literal['llm', 'fallback'] = 'fallback'
+    rationale: str = ''
     max_iterations: int = 3
     current_step: int = 0
     status: Literal["planned", "executing", "completed", "needs_review"] = "planned"
@@ -43,6 +49,17 @@ class ReflectionResult:
     next_action: ActionKind
     confidence: float
     rationale: str
+
+@dataclass
+class ClaimVerification:
+    claim_id: str
+    claim_text: str
+    status: ClaimStatus
+    supporting_evidence: list[Evidence] = field(default_factory=list)
+    conflicting_evidence: list[Evidence] = field(default_factory=list)
+    citation: str | None = None
+    confidence: float = 0.0
+    rationale: str = ''
 
 @dataclass
 class ToolCall:
@@ -81,6 +98,8 @@ class RunState:
     final_answer: str | None = None
     overall_confidence: float = 0.0
     evidence_state: dict = field(default_factory=dict)
+    claim_verifications: list[ClaimVerification] = field(default_factory=list)
+    observations: list[dict] = field(default_factory=list)
 
     def snapshot(self) -> dict:
         return asdict(self)
