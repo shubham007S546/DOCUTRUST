@@ -80,7 +80,7 @@ async def query(request: QueryIn, context: RequestContext = Depends(request_cont
     evidence = []
     retriever = HybridRetriever(store.pool) if getattr(store, "pool", None) else None
     state = await run_policy_graph(request.query.strip(), context.tenant_id, context.mode, evidence, retriever)
-    await store.append(context.tenant_id, "runs", {"id": state.run_id, "query": state.query, "confidence": state.overall_confidence, "requires_review": state.requires_review, "events": state.events})
+    await store.append(context.tenant_id, "runs", {"id": state.run_id, "actor_id": context.user_id, "query": state.query, "answer": state.final_answer, "confidence": state.overall_confidence, "requires_review": state.requires_review, "events": state.events, "evidence": [item.__dict__ for item in state.evidence]})
     return {"run_id": state.run_id, "status": "needs_review" if state.requires_review else "completed", "goal": state.goal, "plan": plan_to_dict(state.plan), "actions": [tool.__dict__ for tool in state.tool_calls], "tools": [tool.name for tool in state.tool_calls], "evidence": [evidence.__dict__ for evidence in state.evidence], "claim_verifications": [claim.__dict__ for claim in state.claim_verifications], "reflection": reflection_to_dict(state.reflections[-1] if state.reflections else None), "answer": state.final_answer, "confidence": state.overall_confidence, "requires_review": state.requires_review, "evidence_state": state.evidence_state, "agents": [result_to_dict(agent) for agent in state.agents], "events": state.events, "provider": provider_status()}
 
 @app.post("/api/query/stream")
@@ -94,7 +94,7 @@ async def query_stream(request: QueryIn, context: RequestContext = Depends(reque
             retriever = HybridRetriever(store.pool) if getattr(store, "pool", None) else None
             yield f"data: {json.dumps({'type': 'retrieval_deferred', 'evidence_count': 0})}\n\n"
             state = await run_policy_graph(request.query.strip(), context.tenant_id, context.mode, evidence, retriever)
-            await store.append(context.tenant_id, "runs", {"id": state.run_id, "query": state.query, "answer": state.final_answer, "confidence": state.overall_confidence, "requires_review": state.requires_review, "events": state.events})
+            await store.append(context.tenant_id, "runs", {"id": state.run_id, "actor_id": context.user_id, "query": state.query, "answer": state.final_answer, "confidence": state.overall_confidence, "requires_review": state.requires_review, "events": state.events, "evidence": [item.__dict__ for item in state.evidence]})
             for event in state.events:
                 yield f"data: {json.dumps(event)}\n\n"
             yield f"data: {json.dumps({'type': 'run_result', 'run_id': state.run_id, 'status': 'needs_review' if state.requires_review else 'completed', 'goal': state.goal, 'plan': plan_to_dict(state.plan), 'actions': [tool.__dict__ for tool in state.tool_calls], 'tools': [tool.name for tool in state.tool_calls], 'reflection': reflection_to_dict(state.reflections[-1] if state.reflections else None), 'answer': state.final_answer, 'confidence': state.overall_confidence, 'requires_review': state.requires_review, 'evidence_state': state.evidence_state, 'agents': [result_to_dict(agent) for agent in state.agents], 'provider': provider_status()})}\n\n"
