@@ -83,10 +83,15 @@ export function DocuTrustDashboard() {
   }
 
   async function deleteHistory(run: ReportRun) {
-    const response = await fetch('/api/query/runs', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: run.id }) })
-    if (!response.ok) throw new Error('Could not delete this conversation')
-    setReportRuns((items) => items.filter((item) => item.id !== run.id))
-    if (selectedRunId === run.id) setSelectedRunId(null)
+    try {
+      const response = await fetch('/api/query/runs', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: run.id }) })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.error ?? 'Could not delete this conversation')
+      setReportRuns((items) => items.filter((item) => item.id !== run.id))
+      if (selectedRunId === run.id) setSelectedRunId(null)
+    } catch (error) {
+      setUploadStatus(error instanceof Error ? error.message : 'Could not delete this conversation')
+    }
   }
 
   async function runChatQuery(chatQuery: string) {
