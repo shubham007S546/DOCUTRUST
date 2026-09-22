@@ -15,8 +15,9 @@ export async function DELETE(request: Request) {
   if (!session?.user?.id) return Response.json({ error: 'Please sign in.' }, { status: 401 })
   const body = await request.json().catch(() => null) as { id?: string } | null
   if (!body?.id) return Response.json({ error: 'Run id is required.' }, { status: 400 })
-  await db.delete(queryRuns).where(and(eq(queryRuns.id, body.id), eq(queryRuns.tenantId, tenantUuid(session.user.id)), eq(queryRuns.actorId, session.user.id)))
-  return Response.json({ ok: true })
+  const deleted = await db.delete(queryRuns).where(and(eq(queryRuns.id, body.id), eq(queryRuns.tenantId, tenantUuid(session.user.id)))).returning({ id: queryRuns.id })
+  if (!deleted.length) return Response.json({ error: 'Conversation not found.' }, { status: 404 })
+  return Response.json({ ok: true, id: deleted[0].id })
 }
 
 export async function GET() {
