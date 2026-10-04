@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useState } from 'react'
 import { ArrowUp, Bot, FileText, LoaderCircle, User } from 'lucide-react'
 
 type Citation = { document_id: string; section: string; quote: string; version: string; score: number }
@@ -16,7 +16,6 @@ function cleanCitation(value: string) {
 
 export function PolicyChat({ initialQuery, initialMessages = [], onRun }: { initialQuery: string; initialMessages?: Message[]; onRun: (query: string) => Promise<{ answer: string; confidence: number; citations: Citation[] }> }) {
   const [messages, setMessages] = useState<Message[]>(initialMessages)
-  useEffect(() => { setMessages(initialMessages) }, [initialMessages])
   const [value, setValue] = useState('')
   const [loading, setLoading] = useState(false)
 
