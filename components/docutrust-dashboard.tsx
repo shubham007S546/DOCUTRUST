@@ -89,13 +89,15 @@ export function DocuTrustDashboard() {
       if (!response.ok) throw new Error(payload.error ?? 'Could not delete this conversation')
       setReportRuns((items) => items.filter((item) => item.id !== run.id))
       if (selectedRunId === run.id) setSelectedRunId(null)
+      setUploadStatus('Conversation deleted.')
+      window.setTimeout(() => setUploadStatus(null), 3000)
     } catch (error) {
       setUploadStatus(error instanceof Error ? error.message : 'Could not delete this conversation')
     }
   }
 
   async function runChatQuery(chatQuery: string) {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/query/stream`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Docutrust-Mode': 'private' }, body: JSON.stringify({ query: chatQuery }) })
+    const response = await fetch('/api/query/stream', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Docutrust-Mode': 'private' }, body: JSON.stringify({ query: chatQuery }) })
     if (!response.ok || !response.body) { const errorText = await response.text().catch(() => ''); throw new Error(errorText || `The live policy API could not complete this answer (${response.status}).`) }
     const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let result: any = null
     while (true) { const chunk = await reader.read(); if (chunk.done) break; buffer += decoder.decode(chunk.value, { stream: true }); const messages = buffer.split('\n\n'); buffer = messages.pop() ?? ''; for (const message of messages) { const line = message.split('\n').find((item) => item.startsWith('data: ')); if (!line) continue; const raw = line.slice(6).trim(); if (!raw || raw === '[DONE]') continue; const payload = JSON.parse(raw); if (payload.type === 'error') throw new Error(payload.error || 'Policy analysis failed.'); if (payload.type === 'run_result') result = payload } }
@@ -110,7 +112,7 @@ export function DocuTrustDashboard() {
   async function runQuery() {
     setRunning(true); setTraceEvents([]); setLatestAnswer(null); setLatestConfidence(null); setAgentReports([])
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/query/stream`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Docutrust-Mode': 'private' }, body: JSON.stringify({ query: query.trim() }) })
+      const response = await fetch('/api/query/stream', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Docutrust-Mode': 'private' }, body: JSON.stringify({ query: query.trim() }) })
       if (!response.ok || !response.body) throw new Error(`Query failed (${response.status})`)
       const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''
       while (true) {
@@ -132,7 +134,7 @@ export function DocuTrustDashboard() {
   }
   async function updateReview(id: string, status: 'Approved' | 'Rejected', note: string) {
     const decision = status === 'Approved' ? 'approved' : 'rejected'
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/review`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Docutrust-Mode': 'private' }, body: JSON.stringify({ run_id: id, decision, note: note.trim() || 'Disposition recorded from workspace' }) })
+    const response = await fetch('/api/review', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Docutrust-Mode': 'private' }, body: JSON.stringify({ run_id: id, decision, note: note.trim() || 'Disposition recorded from workspace' }) })
     if (!response.ok) throw new Error('Could not save review decision')
     setReviews((items) => items.map((item) => item.id === id ? { ...item, status } : item))
   }

@@ -26,6 +26,8 @@ export async function DELETE(request: Request) {
   const body = await request.json().catch(() => ({}))
   if (!body.run_id) return Response.json({ error: 'A run_id is required.' }, { status: 400 })
   const tenantId = tenantUuid(session.user.id)
+  const run = await db.select({ id: queryRuns.id }).from(queryRuns).where(and(eq(queryRuns.id, body.run_id), eq(queryRuns.tenantId, tenantId))).limit(1)
+  if (!run.length) return Response.json({ error: 'Conversation not found.' }, { status: 404 })
   await db.delete(reviews).where(and(eq(reviews.queryRunId, body.run_id), eq(reviews.tenantId, tenantId)))
   await db.delete(queryRuns).where(and(eq(queryRuns.id, body.run_id), eq(queryRuns.tenantId, tenantId)))
   return Response.json({ ok: true, id: body.run_id })

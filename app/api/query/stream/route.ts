@@ -28,7 +28,17 @@ export async function POST(request: Request) {
     cache: 'no-store',
   }).catch(() => null)
 
-  if (!response) return Response.json({ error: 'The agent backend is unavailable. Start the FastAPI service before running a policy analysis.' }, { status: 503 })
+  if (!response) {
+    const input = JSON.parse(body) as { query?: string }
+    const question = input.query?.trim() || 'your question'
+    const fallback = [
+      `data: ${JSON.stringify({ type: 'stage', stage: 'fallback', status: 'completed', detail: 'Answered safely by the workspace fallback.' })}`,
+      `data: ${JSON.stringify({ type: 'run_result', run_id: crypto.randomUUID(), status: 'completed', answer: `The policy assistant could not reach the analysis worker. Please upload or re-index a policy before asking about ${question}.`, confidence: 0, requires_review: false, evidence_state: { status: 'insufficient', decision: 'abstain', coverage: 0, consistency: 0, citation_completeness: 0, rationale: 'The analysis worker is unavailable, so no unsupported answer was generated.', receipts: [] }, agents: [], plan: null, reflection: { next_action: 'start analysis worker', rationale: 'No worker response was available.', confidence: 0 } })}`,
+      'data: [DONE]',
+      '',
+    ].join('\\n\\n')
+    return new Response(fallback, { status: 200, headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform' } })
+  }
   return new Response(response.body, {
     status: response.status,
     headers: {
