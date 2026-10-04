@@ -3,7 +3,7 @@ import { headers } from 'next/headers'
 import { and, desc, eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
-import { queryRuns } from '@/lib/db/schema'
+import { queryRuns, reviews } from '@/lib/db/schema'
 
 function tenantUuid(userId: string) {
   const hex = createHash('sha256').update(`docutrust-tenant:${userId}`).digest('hex').slice(0, 32)
@@ -16,7 +16,9 @@ export async function DELETE(request: Request) {
   const body = await request.json().catch(() => null) as { id?: string } | null
   if (!body?.id) return Response.json({ error: 'Run id is required.' }, { status: 400 })
   try {
-    await db.delete(queryRuns).where(and(eq(queryRuns.id, body.id), eq(queryRuns.tenantId, tenantUuid(session.user.id))))
+    const tenantId = tenantUuid(session.user.id)
+    await db.delete(reviews).where(and(eq(reviews.queryRunId, body.id), eq(reviews.tenantId, tenantId)))
+    await db.delete(queryRuns).where(and(eq(queryRuns.id, body.id), eq(queryRuns.tenantId, tenantId)))
     return Response.json({ ok: true, id: body.id })
   } catch {
     return Response.json({ error: 'Conversation could not be deleted.' }, { status: 500 })
