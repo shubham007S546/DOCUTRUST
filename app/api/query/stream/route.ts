@@ -2,7 +2,7 @@ import { createHash, createHmac } from 'node:crypto'
 import { headers } from 'next/headers'
 import { generateText } from 'ai'
 import { groq } from '@ai-sdk/groq'
-import { and, desc, eq, ilike } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { auth } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { documentChunks, queryRuns } from '@/lib/db/schema'
@@ -15,9 +15,10 @@ function tenantUuid(userId: string) {
 }
 
 async function runDirectRag(question: string, userId: string, tenantId: string) {
-  const terms = question.toLowerCase().split(/\\W+/).filter((term) => term.length > 3).slice(0, 8)
-  const chunks = await db.select({ id: documentChunks.documentId, version: documentChunks.versionLabel, section: documentChunks.chunkIndex, quote: documentChunks.content }).from(documentChunks).where(and(eq(documentChunks.tenantId, tenantId), terms.length ? ilike(documentChunks.content, `%${terms[0]}%`) : undefined)).orderBy(desc(documentChunks.chunkIndex)).limit(8)
-  const evidence = chunks.map((item) => ({ document_id: item.id, version: item.version, section: `Section ${item.section + 1}`, quote: item.quote, score: 0.85 }))
+  const terms = Array.from(new Set(question.toLowerCase().split(/\W+/).filter((term) => term.length > 2))).slice(0, 12)
+  const candidates = await db.select({ id: documentChunks.documentId, version: documentChunks.versionLabel, section: documentChunks.chunkIndex, quote: documentChunks.content }).from(documentChunks).where(eq(documentChunks.tenantId, tenantId)).orderBy(documentChunks.chunkIndex).limit(200)
+  const ranked = candidates.map((item) => { const haystack = item.quote.toLowerCase(); const matches = terms.filter((term) => haystack.includes(term)).length; return { ...item, matches, score: terms.length ? matches / terms.length : 0 } }).filter((item) => item.matches > 0).sort((a, b) => b.score - a.score || a.section - b.section).slice(0, 8)
+  const evidence = ranked.map((item) => ({ document_id: item.id, version: item.version, section: `Section ${item.section + 1}`, quote: item.quote, score: Number(item.score.toFixed(3)) }))
   const context = evidence.map((item) => `[${item.document_id} | ${item.section}] ${item.quote}`).join('\\n')
   const stages = ['planner', 'retrieval', 'policy specialist', 'verification specialist', 'report specialist']
   let answer = 'The uploaded policy does not establish an answer to this question.'
