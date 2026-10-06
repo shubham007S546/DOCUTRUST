@@ -35,6 +35,23 @@ function cleanPolicyText(value: string) {
     .trim()
 }
 
+function chunkPolicyText(text: string) {
+  const paragraphs = text.split(/\n{2,}/).map((paragraph) => paragraph.replace(/\s+/g, ' ').trim()).filter((paragraph) => paragraph.length > 40)
+  const chunks: string[] = []
+  let current = ''
+  for (const paragraph of paragraphs) {
+    if (current && current.length + paragraph.length + 2 > 1200) {
+      chunks.push(current)
+      const overlap = current.split(/(?<=[.!?])\s+/).slice(-2).join(' ')
+      current = `${overlap} ${paragraph}`.trim()
+    } else {
+      current = current ? `${current} ${paragraph}` : paragraph
+    }
+  }
+  if (current) chunks.push(current)
+  return chunks
+}
+
 function tenantUuid(userId: string) {
   const hex = createHash('sha256').update(`docutrust-tenant:${userId}`).digest('hex').slice(0, 32)
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20)}`
@@ -83,7 +100,7 @@ export async function POST(request: NextRequest) {
   }
   const normalized = cleanPolicyText(text)
   if (normalized.length < 40) return NextResponse.json({ error: 'No readable text was extracted from this file.' }, { status: 422 })
-  const chunks = normalized.match(/.{1,1400}(?:\s|$)/g)?.map((content, index) => ({ id: randomUUID(), tenantId: resolvedTenantId, versionLabel: 'v1', chunkIndex: index, content: content.trim() })).filter((chunk) => chunk.content.length > 20) ?? []
+  const chunks = chunkPolicyText(normalized).map((content, index) => ({ id: randomUUID(), tenantId: resolvedTenantId, versionLabel: 'v1', chunkIndex: index, content })).filter((chunk) => chunk.content.length > 20)
   const documentId = randomUUID()
   const sha256 = createHash('sha256').update(bytes).digest('hex')
   await db.insert(documents).values({ id: documentId, tenantId: resolvedTenantId, title: file.name, sourceType: 'upload', mimeType: file.type, status: 'ready', sha256 })
