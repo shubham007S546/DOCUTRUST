@@ -64,7 +64,7 @@ export async function POST(request: Request) {
         ...result.stages.map((stage, index) => ({ type: 'stage', stage, status: 'completed', detail: index === 0 ? 'Created an evidence-grounded plan.' : `Completed ${stage}.` })),
         { type: 'run_result', run_id: result.runId, status: result.requiresReview ? 'needs_review' : 'completed', answer: result.answer, confidence: result.confidence, requires_review: result.requiresReview, evidence_state: { status: result.evidence.length ? 'grounded' : 'insufficient', decision: result.requiresReview ? 'human_review' : 'answer', coverage: result.evidence.length ? 1 : 0, consistency: result.evidence.length ? 1 : 0, citation_completeness: result.evidence.length ? 1 : 0, rationale: result.evidence.length ? 'Answer generated from tenant-scoped policy chunks.' : 'No tenant-scoped policy evidence matched the question.', receipts: result.evidence }, agents: result.stages.map((stage) => ({ agent: stage, status: 'completed', answer: stage === 'report specialist' ? result.answer : `Completed ${stage}.`, confidence: result.confidence })) },
       ]
-      return new Response(`${events.map((event) => `data: ${JSON.stringify(event)}`).join('\\n\\n')}\\n\\ndata: [DONE]\\n\\n`, { status: 200, headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform' } })
+      return new Response(`${events.map((event) => `data: ${JSON.stringify(event)}`).join('\n\n')}\n\ndata: [DONE]\n\n`, { status: 200, headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform' } })
     } catch (error) {
       return Response.json({ error: error instanceof Error ? error.message : 'Direct policy analysis failed.' }, { status: 500 })
     }
