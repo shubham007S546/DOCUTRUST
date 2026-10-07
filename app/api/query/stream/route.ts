@@ -21,8 +21,8 @@ async function runDirectRag(question: string, userId: string, tenantId: string) 
   const candidates = await db.select({ id: documentChunks.documentId, version: documentChunks.versionLabel, section: documentChunks.chunkIndex, quote: documentChunks.content }).from(documentChunks).where(eq(documentChunks.tenantId, tenantId)).orderBy(documentChunks.chunkIndex).limit(500)
   const ranked = candidates.map((item) => { const haystack = item.quote.toLowerCase(); const matches = terms.filter((term) => new RegExp(`\\b${term}\\b`).test(haystack)).length; const phraseBonus = normalizedQuestion.length > 8 && haystack.includes(normalizedQuestion) ? 0.5 : 0; const tocPenalty = /contents|list of (figures|tables)|^chapter \d|^\d+(\.\d+)?\s+[^.]{1,80}$/.test(haystack) ? 0.35 : 0; return { ...item, matches, score: matches / Math.max(terms.length, 1) + phraseBonus - tocPenalty } }).filter((item) => item.matches > 0).sort((a, b) => b.score - a.score || a.section - b.section).slice(0, 8)
   const evidence = ranked.map((item) => ({ document_id: item.id, version: item.version, section: `Section ${item.section + 1}`, quote: item.quote, score: Number(item.score.toFixed(3)) }))
-  const context = evidence.map((item, index) => `Source ${index + 1} (${item.section}): ${item.quote}`).join('\n')
-  const stages = ['planner', 'retrieval', 'policy specialist', 'verification specialist', 'report specialist']
+  const context = evidence.map((item, index) => `Source ${index + 1} (${item.section})\n${item.quote}`).join('\n\n')
+  const stages = ['planner', 'query analysis', 'retrieval', 'evidence verification', 'answer synthesis', 'report specialist']
   let answer = 'The uploaded policy does not establish an answer to this question.'
   let confidence = 0
   if (evidence.length && process.env.GROQ_API_KEY) {

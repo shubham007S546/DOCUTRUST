@@ -36,19 +36,21 @@ function cleanPolicyText(value: string) {
 }
 
 function chunkPolicyText(text: string) {
-  const paragraphs = text.split(/\n{2,}/).map((paragraph) => paragraph.replace(/\s+/g, ' ').trim()).filter((paragraph) => paragraph.length > 40)
+  const blocks = text.split(/\n+/).map((line) => line.replace(/\s+/g, ' ').trim()).filter((line) => line.length > 20)
+  const sentences = blocks.flatMap((block) => block.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [block]).map((sentence) => sentence.trim()).filter((sentence) => sentence.length > 20)
   const chunks: string[] = []
-  let current = ''
-  for (const paragraph of paragraphs) {
-    if (current && current.length + paragraph.length + 2 > 1200) {
-      chunks.push(current)
-      const overlap = current.split(/(?<=[.!?])\s+/).slice(-2).join(' ')
-      current = `${overlap} ${paragraph}`.trim()
-    } else {
-      current = current ? `${current} ${paragraph}` : paragraph
+  let current: string[] = []
+  let length = 0
+  for (const sentence of sentences) {
+    if (current.length && length + sentence.length + 1 > 1100) {
+      chunks.push(current.join(' '))
+      current = current.slice(-2)
+      length = current.join(' ').length
     }
+    current.push(sentence)
+    length += sentence.length + 1
   }
-  if (current) chunks.push(current)
+  if (current.length) chunks.push(current.join(' '))
   return chunks
 }
 
