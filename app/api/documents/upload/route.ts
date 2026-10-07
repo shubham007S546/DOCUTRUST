@@ -5,6 +5,7 @@ import { auth } from '@/lib/auth'
 import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { tenants, documents, documentChunks } from '@/lib/db/schema'
+import mammoth from 'mammoth'
 
 export const runtime = 'nodejs'
 
@@ -18,6 +19,9 @@ const ALLOWED_TYPES = new Set([
   'application/json',
   'application/rtf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/png',
+  'image/jpeg',
+  'image/webp',
 ])
 
 function cleanPolicyText(value: string) {
@@ -97,8 +101,13 @@ export async function POST(request: NextRequest) {
     text = extracted.text
   } else if (file.type.startsWith('text/') || file.type === 'application/json') {
     text = bytes.toString('utf8')
+  } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+    const extracted = await mammoth.extractRawText({ buffer: bytes })
+    text = extracted.value
+  } else if (file.type.startsWith('image/')) {
+    return NextResponse.json({ error: 'Image upload is recognized, but OCR is not enabled yet. Upload a searchable PDF or DOCX, or add an OCR provider before indexing images.' }, { status: 415 })
   } else {
-    return NextResponse.json({ error: 'This deployment supports PDF, text, Markdown, CSV, and JSON uploads. DOCX requires a document worker.' }, { status: 415 })
+    return NextResponse.json({ error: 'Unsupported file extraction type.' }, { status: 415 })
   }
   const normalized = cleanPolicyText(text)
   if (normalized.length < 40) return NextResponse.json({ error: 'No readable text was extracted from this file.' }, { status: 422 })
